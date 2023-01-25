@@ -1,10 +1,10 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:google_ml_kit/google_ml_kit.dart';
+import 'package:flutter_ml_text/image_picker.dart';
+import 'package:flutter_ml_text/text_recognaiton.dart';
+import 'package:flutter_ml_text/translation.dart';
 import 'package:image_picker/image_picker.dart';
-
-import 'package:translator/translator.dart';
 
 void main() {
   runApp(const MyApp());
@@ -33,55 +33,19 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  bool textScanning = false;
-
   XFile? imageFile;
 
-  String scannedText = "";
+  bool textScanning = false;
 
-  void getImage(ImageSource imgSource) async {
-    try {
-      final pickedImage = await ImagePicker().pickImage(source: imgSource);
-      if (pickedImage != null) {
-        setState(() {
-          textScanning = true;
-          imageFile = pickedImage;
-        });
-        getRecognisedText(pickedImage);
-      }
-    } catch (err) {
-      setState(() {
-        textScanning = false;
-        imageFile = null;
-        scannedText = "An Error has occured !";
-      });
-    }
-  }
-
-  void getRecognisedText(XFile file) async {
-    final inputImage = InputImage.fromFilePath(file.path);
-    final textDetector = GoogleMlKit.vision.textRecognizer();
-    RecognizedText recognizedText = await textDetector.processImage(inputImage);
-    await textDetector.close();
-    scannedText = "";
-    for (TextBlock block in recognizedText.blocks) {
-      for (TextLine line in block.lines) {
-        scannedText = scannedText + line.text + "\n";
-      }
-    }
-    setState(() {
-      textScanning = false;
-    });
-  }
+  String translatedText = "";
 
   void translateFinish() {
     setState(() {
       isLoading = false;
+      textScanning = false;
     });
   }
 
-  final translator = GoogleTranslator();
-  String translatedText = "";
   bool isLoading = false;
 
   @override
@@ -124,8 +88,11 @@ class _MyHomePageState extends State<MyHomePage> {
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8.0)),
                         ),
-                        onPressed: () {
-                          getImage(ImageSource.gallery);
+                        onPressed: () async {
+                          imageFile =
+                              await PickImage().getImage(ImageSource.gallery);
+                          textScanning = true;
+                          setState(() {});
                         },
                         child: Container(
                           margin: const EdgeInsets.symmetric(
@@ -160,7 +127,10 @@ class _MyHomePageState extends State<MyHomePage> {
                               borderRadius: BorderRadius.circular(8.0)),
                         ),
                         onPressed: () async {
-                          getImage(ImageSource.camera);
+                          imageFile =
+                              await PickImage().getImage(ImageSource.camera);
+                          textScanning = true;
+                          setState(() {});
                         },
                         child: Container(
                           margin: const EdgeInsets.symmetric(
@@ -193,33 +163,52 @@ class _MyHomePageState extends State<MyHomePage> {
                         style: TextStyle(
                             fontSize: 20, fontWeight: FontWeight.bold),
                       ),
-                      Text(
-                        scannedText,
-                        style: const TextStyle(fontSize: 15),
+                      FutureBuilder(
+                        future: TextRecognation().getRecognisedText(imageFile),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const CircularProgressIndicator(
+                                color: Colors.green);
+                          } else if (snapshot.connectionState ==
+                              ConnectionState.done) {
+                            return Column(
+                              children: [
+                                Text(
+                                  snapshot.data!,
+                                  style: const TextStyle(fontSize: 15),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () async {
+                                    isLoading = true;
+                                    translatedText =
+                                        await Translation.translate(
+                                            snapshot.data!);
+
+                                    setState(() {
+                                      translateFinish();
+                                    });
+                                  },
+                                  child: isLoading
+                                      ? const CircularProgressIndicator(
+                                          color: Colors.white)
+                                      : const Text("Translate"),
+                                ),
+                              ],
+                            );
+                          } else {
+                            return const Text("An Error Has Occured !");
+                          }
+                        },
                       ),
-                      if (scannedText.isNotEmpty)
-                        ElevatedButton(
-                          onPressed: () async {
-                            isLoading = true;
-                            final translate = await translator
-                                .translate(scannedText, from: 'en', to: 'tr');
-                            translatedText = translate.toString();
-                            setState(() {
-                              translateFinish();
-                            });
-                          },
-                          child: isLoading
-                              ? const CircularProgressIndicator(
-                                  color: Colors.white)
-                              : const Text("Translate"),
-                        ),
                     ],
                   ),
                 ),
                 if (translatedText.isNotEmpty)
                   AlertDialog(
-                      title: const Text("Translated Text"),
-                      content: Text(translatedText)),
+                    title: const Text("Translated Text"),
+                    content: Text(translatedText),
+                  ),
               ],
             ),
           ),
